@@ -5,43 +5,259 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>DeepSeek Chat</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; height: 100vh; }
-    .container { width: 100%; max-width: 600px; height: 100vh; display: flex; flex-direction: column; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-    .header { background: #4F46E5; color: white; padding: 15px; text-align: center; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
-    .header span { flex: 1; }
-    #exportBtn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5); color: white; padding: 5px 12px; border-radius: 15px; font-size: 14px; cursor: pointer; white-space: nowrap; }
-    #exportBtn:active { background: rgba(255,255,255,0.4); }
-    .chat-box { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
-    .message { max-width: 80%; padding: 10px 15px; border-radius: 18px; word-wrap: break-word; white-space: pre-wrap; }
-    .message h1, .message h2, .message h3, .message h4, .message h5, .message h6 { margin: 8px 0 4px 0; font-size: inherit; }
-    .message ul, .message ol { padding-left: 20px; margin: 4px 0; }
-    .message li { margin: 2px 0; }
-    .message code { background: rgba(0,0,0,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
-    .message pre { background: rgba(0,0,0,0.06); padding: 10px; border-radius: 8px; overflow-x: auto; margin: 6px 0; }
-    .message pre code { background: none; padding: 0; }
-    .user { align-self: flex-end; background: #4F46E5; color: white; }
-    .user code { background: rgba(255,255,255,0.2); }
-    .user pre { background: rgba(255,255,255,0.1); }
-    .assistant { align-self: flex-start; background: #e5e7eb; color: black; }
-    .input-area { display: flex; padding: 10px; gap: 10px; border-top: 1px solid #ddd; }
-    #messageInput { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 25px; outline: none; font-size: 16px; }
-    #sendBtn { width: 50px; height: 50px; border-radius: 50%; border: none; background: #4F46E5; color: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-    #sendBtn:disabled { opacity: 0.5; }
+    :root {
+      --brand: #C2703D;          /* 暖棕橙 */
+      --brand-2: #E0A458;        /* 琥珀 */
+      --brand-soft: #FBF1E6;
+      --bg: #F6EFE6;             /* 米色背景 */
+      --card: #FFFBF5;           /* 奶油卡片 */
+      --text: #4A3F35;           /* 暖深棕文字，比纯黑柔和 */
+      --text-soft: #8A7A6A;
+      --border: #EADFD0;
+      --user-bubble: linear-gradient(135deg, #D98E5A, #E6B273);
+      --assistant-bubble: #FFFDF9;
+      --radius: 18px;
+      --shadow: 0 6px 24px rgba(120, 90, 60, 0.10);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100dvh;
+    }
+    .container {
+      width: 100%;
+      max-width: 680px;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    /* 顶部栏 */
+    .header {
+      background: linear-gradient(135deg, #C2703D, #E0A458);
+      color: #FFF8EF;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: 0 2px 12px rgba(194, 112, 61, 0.25);
+      z-index: 2;
+    }
+    .header .title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: .2px;
+    }
+    .header .logo {
+      width: 32px; height: 32px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.22);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .header .title small {
+      display: block;
+      font-size: 11px;
+      font-weight: 400;
+      opacity: .85;
+      margin-top: 1px;
+      color: #FFF3E4;
+    }
+    #exportBtn {
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #FFF8EF;
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .2s;
+      backdrop-filter: blur(4px);
+    }
+    #exportBtn:hover { background: rgba(255,255,255,0.3); }
+    #exportBtn:active { transform: scale(.97); }
+
+    /* 聊天区 */
+    .chat-box {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 16px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background:
+        radial-gradient(1200px 400px at 100% 0%, #FBF1E6 0%, transparent 60%),
+        radial-gradient(800px 300px at 0% 100%, #F7EBDA 0%, transparent 55%),
+        var(--bg);
+      scroll-behavior: smooth;
+    }
+    .chat-box::-webkit-scrollbar { width: 6px; }
+    .chat-box::-webkit-scrollbar-thumb { background: #DCCBB6; border-radius: 3px; }
+
+    .message {
+      max-width: 82%;
+      padding: 11px 15px;
+      border-radius: var(--radius);
+      font-size: 15px;
+      line-height: 1.6;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      animation: pop .18s ease-out;
+      position: relative;
+    }
+    @keyframes pop {
+      from { opacity: 0; transform: translateY(6px) scale(.98); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .user {
+      align-self: flex-end;
+      background: var(--user-bubble);
+      color: #4A3020;
+      border-bottom-right-radius: 6px;
+      box-shadow: 0 4px 14px rgba(194,112,61,0.22);
+    }
+    .assistant {
+      align-self: flex-start;
+      background: var(--assistant-bubble);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 6px;
+      box-shadow: 0 2px 10px rgba(120,90,60,0.06);
+    }
+
+    /* 消息内 Markdown 元素 */
+    .message h1, .message h2, .message h3,
+    .message h4, .message h5, .message h6 {
+      margin: 10px 0 4px;
+      font-size: 1em;
+      font-weight: 700;
+    }
+    .message ul, .message ol { padding-left: 20px; margin: 6px 0; }
+    .message li { margin: 3px 0; }
+    .message code {
+      background: rgba(194,112,61,0.10);
+      color: #A5542A;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.9em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .message pre {
+      background: #3E342B;      /* 暖深棕代码块，比纯黑护眼 */
+      color: #F3E7D8;
+      padding: 12px 14px;
+      border-radius: 12px;
+      overflow-x: auto;
+      margin: 8px 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .message pre code { background: none; padding: 0; color: inherit; }
+    .user code { background: rgba(255,255,255,0.35); color: #6B3F1E; }
+    .user pre { background: rgba(60,40,20,0.35); color: #FBF1E6; }
+
+    /* 输入区 */
+    .input-area {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border);
+      background: rgba(255,251,245,0.92);
+      backdrop-filter: blur(10px);
+    }
+    #messageInput {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      outline: none;
+      font-size: 16px;
+      background: #FBF5EC;
+      transition: border-color .2s, box-shadow .2s, background .2s;
+      color: var(--text);
+    }
+    #messageInput:focus {
+      border-color: var(--brand-2);
+      background: #FFFDF9;
+      box-shadow: 0 0 0 4px rgba(224,164,88,0.18);
+    }
+    #messageInput::placeholder { color: #B3A392; }
+
+    #sendBtn {
+      width: 46px; height: 46px;
+      flex: none;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      color: #FFF8EF;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 16px rgba(194,112,61,0.30);
+      transition: transform .15s, opacity .2s, box-shadow .2s;
+    }
+    #sendBtn:active { transform: scale(.94); }
+    #sendBtn:disabled { opacity: .5; box-shadow: none; cursor: not-allowed; }
+
+    /* 思考中动画 */
+    .typing { display: inline-flex; gap: 4px; align-items: center; }
+    .typing i {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #C2A184;
+      display: inline-block;
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+    .typing i:nth-child(2) { animation-delay: .15s; }
+    .typing i:nth-child(3) { animation-delay: .3s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: .5; }
+      40% { transform: translateY(-4px); opacity: 1; }
+    }
+
+    @media (max-width: 480px) {
+      .container { box-shadow: none; }
+      .message { max-width: 86%; font-size: 15px; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <span>🤖 DeepSeek Chat</span>
-      <button id="exportBtn" title="导出当前对话记录">📥 导出记录</button>
+      <div class="title">
+        <div class="logo">🤖</div>
+        <div>
+          DeepSeek Chat
+          <small>智能助手 · 随时在线</small>
+        </div>
+      </div>
+      <button id="exportBtn" title="导出当前对话记录">📥 导出</button>
     </div>
+
     <div class="chat-box" id="chatBox">
       <div class="message assistant">你好！我是 DeepSeek 助手，有什么可以帮你的？</div>
     </div>
+
     <div class="input-area">
       <input type="text" id="messageInput" placeholder="输入消息..." autocomplete="off">
-      <button id="sendBtn">➤</button>
+      <button id="sendBtn" aria-label="发送">➤</button>
     </div>
   </div>
 
@@ -56,6 +272,33 @@
     let messages = [
       { role: 'system', content: '你是一个乐于助人的助手' }
     ];
+
+    // ===== 保存 / 恢复 =====
+    function saveHistory() {
+      try {
+        localStorage.setItem('chat_history', JSON.stringify(messages));
+      } catch (e) {
+        console.error('保存失败', e);
+      }
+    }
+
+    function restoreHistory() {
+      const saved = localStorage.getItem('chat_history');
+      if (!saved) return;
+      try {
+        const history = JSON.parse(saved);
+        if (!Array.isArray(history) || history.length <= 1) return;
+        messages = history.filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'system');
+        chatBox.innerHTML = '';
+        for (const m of messages) {
+          if (m.role === 'user' || m.role === 'assistant') {
+            addMessage(m.role, m.content);
+          }
+        }
+      } catch (e) {
+        console.error('读取历史失败', e);
+      }
+    }
 
     // 简易 Markdown 渲染
     function renderMarkdown(text) {
@@ -96,12 +339,13 @@
 
       addMessage('user', userMessage);
       messages.push({ role: 'user', content: userMessage });
+      saveHistory();
       messageInput.value = '';
       setLoading(true);
 
       const loadingDiv = document.createElement('div');
       loadingDiv.className = 'message assistant';
-      loadingDiv.textContent = '思考中...';
+      loadingDiv.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
       chatBox.appendChild(loadingDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
 
@@ -123,6 +367,7 @@
           const assistantMessage = data.choices[0].message.content;
           addMessage('assistant', assistantMessage);
           messages.push({ role: 'assistant', content: assistantMessage });
+          saveHistory();
         } else {
           addMessage('assistant', '🔴 请求出错，请稍后重试');
         }
@@ -166,6 +411,18 @@
       if (e.key === 'Enter') sendMessage();
     });
     exportBtn.addEventListener('click', exportChat);
+
+    // 双击标题清空记录
+    document.querySelector('.header .title').addEventListener('dblclick', () => {
+      if (!confirm('确定清空所有聊天记录？')) return;
+      localStorage.removeItem('chat_history');
+      messages = [{ role: 'system', content: '你是一个乐于助人的助手' }];
+      chatBox.innerHTML = '';
+      addMessage('assistant', '你好！我是 DeepSeek 助手，有什么可以帮你的？');
+    });
+
+    // 启动恢复历史
+    restoreHistory();
   </script>
 </body>
 </html>
