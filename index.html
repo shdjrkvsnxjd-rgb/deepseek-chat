@@ -6,12 +6,12 @@
   <title>DeepSeek Chat</title>
   <style>
     :root {
-      --brand: #C2703D;          /* 暖棕橙 */
-      --brand-2: #E0A458;        /* 琥珀 */
+      --brand: #C2703D;
+      --brand-2: #E0A458;
       --brand-soft: #FBF1E6;
-      --bg: #F6EFE6;             /* 米色背景 */
-      --card: #FFFBF5;           /* 奶油卡片 */
-      --text: #4A3F35;           /* 暖深棕文字，比纯黑柔和 */
+      --bg: #F6EFE6;
+      --card: #FFFBF5;
+      --text: #4A3F35;
       --text-soft: #8A7A6A;
       --border: #EADFD0;
       --user-bubble: linear-gradient(135deg, #D98E5A, #E6B273);
@@ -158,7 +158,7 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
     .message pre {
-      background: #3E342B;      /* 暖深棕代码块，比纯黑护眼 */
+      background: #3E342B;
       color: #F3E7D8;
       padding: 12px 14px;
       border-radius: 12px;
@@ -217,6 +217,55 @@
     #sendBtn:active { transform: scale(.94); }
     #sendBtn:disabled { opacity: .5; box-shadow: none; cursor: not-allowed; }
 
+    /* 上传按钮 */
+    #uploadBtn {
+      width: 46px; height: 46px;
+      flex: none;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: #FBF5EC;
+      color: var(--brand);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .2s, transform .15s;
+    }
+    #uploadBtn:hover { background: #F5E9DA; }
+    #uploadBtn:active { transform: scale(.94); }
+    #uploadBtn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* 文档预览条 */
+    .file-chip {
+      margin: 0 14px 10px;
+      padding: 8px 12px;
+      background: var(--brand-soft);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 13px;
+      color: var(--text-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      animation: pop .18s ease-out;
+    }
+    .file-chip span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-chip button {
+      flex: none;
+      border: none;
+      background: transparent;
+      color: var(--brand);
+      cursor: pointer;
+      font-size: 15px;
+      padding: 2px 6px;
+    }
+
     /* 思考中动画 */
     .typing { display: inline-flex; gap: 4px; align-items: center; }
     .typing i {
@@ -256,6 +305,8 @@
     </div>
 
     <div class="input-area">
+      <button id="uploadBtn" aria-label="上传文档" title="上传文档">📎</button>
+      <input type="file" id="fileInput" accept=".txt,.md,.csv,.json,.log,.html,.xml,.js,.py,.css" hidden>
       <input type="text" id="messageInput" placeholder="输入消息..." autocomplete="off">
       <button id="sendBtn" aria-label="发送">➤</button>
     </div>
@@ -268,10 +319,67 @@
     const messageInput = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
     const exportBtn = document.getElementById('exportBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('fileInput');
 
     let messages = [
       { role: 'system', content: '你是一个乐于助人的助手' }
     ];
+
+    // ===== 附件状态 =====
+    let attachedFile = null; // { name, content }
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      if (file.size > 2 * 1024 * 1024) {
+        alert('文件太大，请上传 2MB 以内的文档');
+        fileInput.value = '';
+        return;
+      }
+
+      try {
+        const text = await file.text();
+        attachedFile = { name: file.name, content: text };
+        showFileChip();
+      } catch (e) {
+        alert('读取文件失败：' + e.message);
+      } finally {
+        fileInput.value = '';
+      }
+    });
+
+    function showFileChip() {
+      removeFileChip();
+      if (!attachedFile) return;
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      chip.id = 'fileChip';
+      chip.innerHTML = `
+        <span>📄 ${escapeHtml(attachedFile.name)} · ${attachedFile.content.length} 字</span>
+        <button title="移除">✕</button>
+      `;
+      chip.querySelector('button').onclick = () => {
+        attachedFile = null;
+        removeFileChip();
+      };
+      const inputArea = document.querySelector('.input-area');
+      inputArea.parentNode.insertBefore(chip, inputArea);
+    }
+
+    function removeFileChip() {
+      const old = document.getElementById('fileChip');
+      if (old) old.remove();
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
 
     // ===== 保存 / 恢复 =====
     function saveHistory() {
@@ -331,16 +439,28 @@
     function setLoading(isLoading) {
       sendBtn.disabled = isLoading;
       messageInput.disabled = isLoading;
+      uploadBtn.disabled = isLoading;
     }
 
     async function sendMessage() {
-      const userMessage = messageInput.value.trim();
-      if (!userMessage) return;
+      let userMessage = messageInput.value.trim();
+      if (!userMessage && !attachedFile) return;
 
-      addMessage('user', userMessage);
-      messages.push({ role: 'user', content: userMessage });
+      let displayMessage = userMessage;
+      let apiMessage = userMessage;
+
+      if (attachedFile) {
+        const fileBlock = `【文档：${attachedFile.name}】\n${attachedFile.content}`;
+        displayMessage = (userMessage ? userMessage + '\n\n' : '') + `📄 已上传文档：${attachedFile.name}`;
+        apiMessage = (userMessage ? userMessage + '\n\n' : '') + fileBlock;
+      }
+
+      addMessage('user', displayMessage);
+      messages.push({ role: 'user', content: apiMessage });
       saveHistory();
       messageInput.value = '';
+      attachedFile = null;
+      removeFileChip();
       setLoading(true);
 
       const loadingDiv = document.createElement('div');
