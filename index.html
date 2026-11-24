@@ -39,6 +39,7 @@
       background: var(--card);
       box-shadow: var(--shadow);
       overflow: hidden;
+      position: relative;
     }
 
     /* 顶部栏 */
@@ -139,6 +140,33 @@
       border-bottom-left-radius: 6px;
       box-shadow: 0 2px 10px rgba(120,90,60,0.06);
     }
+
+    /* 消息操作栏 */
+    .action-bar {
+      display: none;
+      position: absolute;
+      bottom: -30px;
+      left: 0;
+      background: #FFF;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 4px;
+      gap: 4px;
+      z-index: 10;
+    }
+    .action-bar.show { display: flex; }
+    .action-bar button {
+      background: none;
+      border: none;
+      padding: 4px 8px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--text);
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .action-bar button:hover { background: var(--brand-soft); }
 
     /* 消息内 Markdown 元素 */
     .message h1, .message h2, .message h3,
@@ -285,6 +313,32 @@
       .container { box-shadow: none; }
       .message { max-width: 86%; font-size: 15px; }
     }
+
+    /* 导出弹窗样式 */
+    .modal-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4);
+      display: none; justify-content: center; align-items: flex-end;
+      z-index: 100;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-content {
+      background: var(--card); width: 100%; max-height: 80%;
+      border-radius: 20px 20px 0 0; padding: 20px;
+      display: flex; flex-direction: column; animation: slideUp 0.3s ease-out;
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .modal-header h3 { font-size: 16px; }
+    .export-list { flex: 1; overflow-y: auto; margin-bottom: 15px; }
+    .export-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .export-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--brand); }
+    .export-controls { display: flex; gap: 10px; }
+    .export-controls button {
+      flex: 1; padding: 12px; border-radius: 12px; border: none; font-size: 15px; font-weight: 500; cursor: pointer;
+    }
+    .btn-cancel { background: #F5E9DA; color: var(--text); }
+    .btn-confirm { background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #FFF; }
   </style>
 </head>
 <body>
@@ -297,7 +351,7 @@
           <small>智能助手 · 随时在线</small>
         </div>
       </div>
-      <button id="exportBtn" title="导出当前对话记录">📥 导出</button>
+      <button id="exportBtn" title="导出对话记录"> 导出</button>
     </div>
 
     <div class="chat-box" id="chatBox">
@@ -310,6 +364,24 @@
       <input type="text" id="messageInput" placeholder="输入消息..." autocomplete="off">
       <button id="sendBtn" aria-label="发送">➤</button>
     </div>
+
+    <!-- 导出弹窗 -->
+    <div class="modal-overlay" id="exportModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>选择要导出的对话</h3>
+          <button class="btn-cancel" style="width:auto; padding:4px 10px;" onclick="closeExportModal()">关闭</button>
+        </div>
+        <div class="export-list" id="exportList">
+          <!-- 动态生成 -->
+        </div>
+        <div class="export-controls">
+          <button class="btn-cancel" onclick="toggleAllExports(true)">全选</button>
+          <button class="btn-cancel" onclick="toggleAllExports(false)">取消全选</button>
+          <button class="btn-confirm" onclick="doExport()">确认导出</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -321,35 +393,28 @@
     const exportBtn = document.getElementById('exportBtn');
     const uploadBtn = document.getElementById('uploadBtn');
     const fileInput = document.getElementById('fileInput');
+    const exportModal = document.getElementById('exportModal');
+    const exportList = document.getElementById('exportList');
 
     let messages = [
       { role: 'system', content: '你是一个乐于助人的助手' }
     ];
 
     // ===== 附件状态 =====
-    let attachedFile = null; // { name, content }
+    let attachedFile = null;
 
     uploadBtn.addEventListener('click', () => fileInput.click());
 
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files[0];
       if (!file) return;
-
-      if (file.size > 2 * 1024 * 1024) {
-        alert('文件太大，请上传 2MB 以内的文档');
-        fileInput.value = '';
-        return;
-      }
-
+      if (file.size > 2 * 1024 * 1024) { alert('文件太大，请上传 2MB 以内的文档'); fileInput.value = ''; return; }
       try {
         const text = await file.text();
         attachedFile = { name: file.name, content: text };
         showFileChip();
-      } catch (e) {
-        alert('读取文件失败：' + e.message);
-      } finally {
-        fileInput.value = '';
-      }
+      } catch (e) { alert('读取文件失败：' + e.message); }
+      finally { fileInput.value = ''; }
     });
 
     function showFileChip() {
@@ -358,14 +423,8 @@
       const chip = document.createElement('div');
       chip.className = 'file-chip';
       chip.id = 'fileChip';
-      chip.innerHTML = `
-        <span>📄 ${escapeHtml(attachedFile.name)} · ${attachedFile.content.length} 字</span>
-        <button title="移除">✕</button>
-      `;
-      chip.querySelector('button').onclick = () => {
-        attachedFile = null;
-        removeFileChip();
-      };
+      chip.innerHTML = `<span> ${escapeHtml(attachedFile.name)} · ${attachedFile.content.length} 字</span><button title="移除">✕</button>`;
+      chip.querySelector('button').onclick = () => { attachedFile = null; removeFileChip(); };
       const inputArea = document.querySelector('.input-area');
       inputArea.parentNode.insertBefore(chip, inputArea);
     }
@@ -376,18 +435,12 @@
     }
 
     function escapeHtml(s) {
-      return s.replace(/[&<>"']/g, c => ({
-        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-      }[c]));
+      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
     // ===== 保存 / 恢复 =====
     function saveHistory() {
-      try {
-        localStorage.setItem('chat_history', JSON.stringify(messages));
-      } catch (e) {
-        console.error('保存失败', e);
-      }
+      try { localStorage.setItem('chat_history', JSON.stringify(messages)); } catch (e) {}
     }
 
     function restoreHistory() {
@@ -400,15 +453,12 @@
         chatBox.innerHTML = '';
         for (const m of messages) {
           if (m.role === 'user' || m.role === 'assistant') {
-            addMessage(m.role, m.content);
+            addMessageToUI(m.role, m.content, m.editCount || 0, messages.indexOf(m));
           }
         }
-      } catch (e) {
-        console.error('读取历史失败', e);
-      }
+      } catch (e) {}
     }
 
-    // 简易 Markdown 渲染
     function renderMarkdown(text) {
       let html = text;
       html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
@@ -428,18 +478,202 @@
       return html;
     }
 
-    function addMessage(role, content) {
+    // ===== 消息操作（长按弹出菜单、编辑、重生成） =====
+    function addMessageToUI(role, content, editCount = 0, msgIndex = -1) {
       const div = document.createElement('div');
       div.className = `message ${role}`;
+      div.dataset.index = msgIndex;
       div.innerHTML = renderMarkdown(content);
+
+      if (role === 'assistant') {
+        // 添加操作栏
+        const actionBar = document.createElement('div');
+        actionBar.className = 'action-bar';
+        actionBar.innerHTML = `
+          <button class="btn-edit">✏️ 编辑</button>
+          <button class="btn-regen">🔄 重新生成</button>
+        `;
+        div.appendChild(actionBar);
+
+        // 编辑逻辑
+        actionBar.querySelector('.btn-edit').onclick = () => {
+          if (editCount >= 4) return alert('该回答编辑次数已达上限（4次）');
+          actionBar.classList.remove('show');
+          startEditing(div, msgIndex, editCount);
+        };
+
+        // 重新生成逻辑
+        actionBar.querySelector('.btn-regen').onclick = () => {
+          actionBar.classList.remove('show');
+          regenerateMessage(div, msgIndex);
+        };
+
+        // 长按事件
+        let pressTimer = null;
+        const startPress = (e) => {
+          if (e.target.closest('.action-bar')) return;
+          pressTimer = setTimeout(() => {
+            document.querySelectorAll('.action-bar').forEach(b => b.classList.remove('show'));
+            actionBar.classList.add('show');
+          }, 500);
+        };
+        const cancelPress = () => clearTimeout(pressTimer);
+        
+        div.addEventListener('mousedown', startPress);
+        div.addEventListener('touchstart', startPress, {passive: true});
+        div.addEventListener('mouseup', cancelPress);
+        div.addEventListener('mouseleave', cancelPress);
+        div.addEventListener('touchend', cancelPress);
+        div.addEventListener('touchmove', cancelPress);
+      }
+
       chatBox.appendChild(div);
       chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // 点击空白处关闭操作栏
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.message')) {
+        document.querySelectorAll('.action-bar').forEach(b => b.classList.remove('show'));
+      }
+    });
+
+    // 编辑功能
+    function startEditing(div, msgIndex, editCount) {
+      const originalHtml = div.innerHTML;
+      const originalText = messages[msgIndex].content;
+      
+      div.innerHTML = `
+        <textarea style="width:100%; min-height:80px; border:1px solid #ccc; border-radius:8px; padding:8px; font-size:15px; font-family:inherit; background:#fff; color:#333; resize:vertical;">${escapeHtml(originalText)}</textarea>
+        <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end;">
+          <button class="btn-cancel" style="padding:4px 10px; border-radius:6px; border:none; background:#e0e0e0; cursor:pointer;">取消</button>
+          <button class="btn-save" style="padding:4px 10px; border-radius:6px; border:none; background:var(--brand); color:#fff; cursor:pointer;">保存</button>
+        </div>
+      `;
+
+      div.querySelector('.btn-cancel').onclick = () => {
+        div.innerHTML = originalHtml;
+        // 重新绑定事件
+        addMessageToUI('assistant', originalText, editCount, msgIndex);
+        div.remove(); // 移除旧的重新添加以保留样式和事件
+      };
+
+      div.querySelector('.btn-save').onclick = () => {
+        const newText = div.querySelector('textarea').value;
+        messages[msgIndex].content = newText;
+        messages[msgIndex].editCount = editCount + 1;
+        saveHistory();
+        
+        // 重新渲染该气泡
+        div.innerHTML = renderMarkdown(newText);
+        addMessageToUI('assistant', newText, editCount + 1, msgIndex);
+        div.remove();
+      };
+    }
+
+    // 重新生成功能
+    async function regenerateMessage(div, msgIndex) {
+      // 找到上一条用户消息
+      let userMsgIndex = msgIndex - 1;
+      while (userMsgIndex >= 0 && messages[userMsgIndex].role !== 'user') {
+        userMsgIndex--;
+      }
+      if (userMsgIndex < 0) return alert('找不到对应的用户提问，无法重新生成');
+
+      // 移除当前回答及之后的消息
+      const userMessage = messages[userMsgIndex];
+      messages = messages.slice(0, msgIndex); 
+      
+      // 清理 UI 中这之后的消息
+      const children = Array.from(chatBox.children);
+      let startRemove = false;
+      for (let i = 0; i < children.length; i++) {
+        if (children[i] === div) startRemove = true;
+        if (startRemove) chatBox.removeChild(children[i]);
+      }
+
+      // 准备请求
+      setLoading(true);
+      const loadingDiv = document.createElement('div');
+      loadingDiv.className = 'message assistant';
+      loadingDiv.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
+      chatBox.appendChild(loadingDiv);
+
+      await fetchAPI(messages, loadingDiv);
     }
 
     function setLoading(isLoading) {
       sendBtn.disabled = isLoading;
       messageInput.disabled = isLoading;
       uploadBtn.disabled = isLoading;
+    }
+
+    // ===== 统一请求逻辑（流式） =====
+    async function fetchAPI(messagesPayload, loadingDiv) {
+      try {
+        const response = await fetch(WORKER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'deepseek-chat',
+            messages: messagesPayload,
+            stream: true, // 开启流式
+          }),
+        });
+
+        if (!response.ok) throw new Error('Network response was not ok');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let assistantMessage = '';
+        let buffer = '';
+        
+        // 第一次清理掉“正在思考”动画
+        loadingDiv.innerHTML = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // 保留最后一行可能不完整的
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(trimmed.slice(6));
+                const delta = data.choices[0]?.delta?.content || '';
+                if (delta) {
+                  assistantMessage += delta;
+                  loadingDiv.innerHTML = renderMarkdown(assistantMessage);
+                  chatBox.scrollTop = chatBox.scrollHeight;
+                }
+              } catch (e) {}
+            }
+          }
+        }
+
+        // 流结束，保存
+        if (assistantMessage) {
+          const newIndex = messages.length;
+          messages.push({ role: 'assistant', content: assistantMessage, editCount: 0 });
+          saveHistory();
+          
+          // 把正在流式的那个 div 替换为标准带有操作栏的 DOM
+          loadingDiv.remove();
+          addMessageToUI('assistant', assistantMessage, 0, newIndex);
+        } else {
+          loadingDiv.innerHTML = ' 请求出错或内容为空';
+        }
+
+      } catch (error) {
+        loadingDiv.innerHTML = ' 网络错误，检查 Worker 是否正常';
+      } finally {
+        setLoading(false);
+      }
     }
 
     async function sendMessage() {
@@ -451,13 +685,15 @@
 
       if (attachedFile) {
         const fileBlock = `【文档：${attachedFile.name}】\n${attachedFile.content}`;
-        displayMessage = (userMessage ? userMessage + '\n\n' : '') + `📄 已上传文档：${attachedFile.name}`;
+        displayMessage = (userMessage ? userMessage + '\n\n' : '') + ` 已上传文档：${attachedFile.name}`;
         apiMessage = (userMessage ? userMessage + '\n\n' : '') + fileBlock;
       }
 
-      addMessage('user', displayMessage);
+      const newIndex = messages.length;
+      addMessageToUI('user', displayMessage, 0, newIndex);
       messages.push({ role: 'user', content: apiMessage });
       saveHistory();
+      
       messageInput.value = '';
       attachedFile = null;
       removeFileChip();
@@ -469,50 +705,65 @@
       chatBox.appendChild(loadingDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
 
-      try {
-        const response = await fetch(WORKER_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'deepseek-chat',
-            messages: messages,
-            stream: false,
-          }),
-        });
-
-        const data = await response.json();
-        chatBox.removeChild(loadingDiv);
-
-        if (data.choices && data.choices.length > 0) {
-          const assistantMessage = data.choices[0].message.content;
-          addMessage('assistant', assistantMessage);
-          messages.push({ role: 'assistant', content: assistantMessage });
-          saveHistory();
-        } else {
-          addMessage('assistant', '🔴 请求出错，请稍后重试');
-        }
-      } catch (error) {
-        chatBox.removeChild(loadingDiv);
-        addMessage('assistant', '🔴 网络错误，检查 Worker 是否正常');
-      } finally {
-        setLoading(false);
-      }
+      await fetchAPI(messages, loadingDiv);
     }
 
-    function exportChat() {
-      if (messages.length <= 1) {
-        alert('当前没有对话记录可导出');
-        return;
-      }
-      let exportText = '';
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+    // ===== 选择导出功能 =====
+    exportBtn.addEventListener('click', () => {
+      if (messages.length <= 1) return alert('当前没有对话记录可导出');
+      
+      let html = '';
+      let roundCount = 0;
+      
       for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        if (msg.role === 'user') {
-          exportText += `🧑 你：\n${msg.content}\n\n`;
-        } else if (msg.role === 'assistant') {
-          exportText += `🤖 DeepSeek：\n${msg.content}\n\n`;
+        if (messages[i].role === 'user') {
+          const nextMsg = messages[i+1];
+          const assistantMsg = (nextMsg && nextMsg.role === 'assistant') ? nextMsg : null;
+          
+          roundCount++;
+          const questionSnippet = messages[i].content.slice(0, 20).replace(/</g, '&lt;') + (messages[i].content.length > 20 ? '...' : '');
+          const answerSnippet = assistantMsg ? (assistantMsg.content.slice(0, 20).replace(/</g, '&lt;') + (assistantMsg.content.length > 20 ? '...' : '')) : '（无回答）';
+
+          html += `
+            <label class="export-item">
+              <input type="checkbox" class="export-checkbox" data-user="${i}" data-assistant="${assistantMsg ? i+1 : -1}" checked>
+              <div>
+                <div style="font-weight:600; color:#4A3F35;">Q: ${questionSnippet}</div>
+                <div style="font-size:12px; color:#8A7A6A;">A: ${answerSnippet}</div>
+              </div>
+            </label>
+          `;
         }
       }
+      exportList.innerHTML = html;
+      exportModal.classList.add('show');
+    });
+
+    function closeExportModal() { exportModal.classList.remove('show'); }
+    
+    function toggleAllExports(checked) {
+      document.querySelectorAll('.export-checkbox').forEach(cb => cb.checked = checked);
+    }
+
+    function doExport() {
+      const checkedBoxes = document.querySelectorAll('.export-checkbox:checked');
+      if (checkedBoxes.length === 0) return alert('请至少选择一轮对话');
+
+      let exportText = '';
+      checkedBoxes.forEach(cb => {
+        const uIndex = parseInt(cb.dataset.user);
+        const aIndex = parseInt(cb.dataset.assistant);
+        
+        exportText += `🧑 你：\n${messages[uIndex].content}\n\n`;
+        if (aIndex !== -1) {
+          exportText += `🤖 DeepSeek：\n${messages[aIndex].content}\n\n`;
+        }
+        exportText += `-------------------\n\n`;
+      });
+
       const blob = new Blob([exportText], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -524,13 +775,9 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      
+      closeExportModal();
     }
-
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage();
-    });
-    exportBtn.addEventListener('click', exportChat);
 
     // 双击标题清空记录
     document.querySelector('.header .title').addEventListener('dblclick', () => {
@@ -538,11 +785,22 @@
       localStorage.removeItem('chat_history');
       messages = [{ role: 'system', content: '你是一个乐于助人的助手' }];
       chatBox.innerHTML = '';
-      addMessage('assistant', '你好！我是 DeepSeek 助手，有什么可以帮你的？');
+      addMessageToUI('assistant', '你好！我是 DeepSeek 助手，有什么可以帮你的？', 0, 1);
     });
 
     // 启动恢复历史
-    restoreHistory();
+    window.onload = () => {
+      const saved = localStorage.getItem('chat_history');
+      if (!saved) {
+        // 给初始欢迎语添加操作栏支持
+        chatBox.innerHTML = '';
+        messages.push({ role: 'assistant', content: '你好！我是 DeepSeek 助手，有什么可以帮你的？', editCount: 0 });
+        addMessageToUI('assistant', messages[1].content, 0, 1);
+        saveHistory();
+      } else {
+        restoreHistory();
+      }
+    };
   </script>
 </body>
 </html>
